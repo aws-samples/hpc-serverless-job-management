@@ -1,0 +1,33 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+Region: us-east-1
+Image:
+  Os: alinux2
+HeadNode:
+  InstanceType: t3.micro
+  Networking:
+    SubnetId: CHANGE_ME
+    ElasticIp: true
+  Ssh:
+    KeyName: CHANGE_ME
+    AllowedIps: 10.0.0.0/16
+  Iam:
+    AdditionalIamPolicies:
+      - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - Policy: CHANGE_ME
+Scheduling:
+  Scheduler: slurm
+  SlurmQueues:
+  - Name: queue1
+    ComputeResources:
+    - Name: t3micro
+      InstanceType: t3.micro
+      MinCount: 1
+      MaxCount: 10
+    Networking:
+      SubnetIds:
+      - CHANGE_ME
+Tags:
+  - Key: Environment
+    Value: HpcServerlessJobManagement
