@@ -6,7 +6,7 @@ The code in this repository accompanies the [HPC job management with a serverles
 * [AWS Lambda](https://aws.amazon.com/lambda/) is a serverless compute service that lets you run code without provisioning or managing servers, creating workload-aware cluster scaling logic, maintaining event integrations, or managing runtimes. Amazon API Gateway uses AWS Lambda to execute the SSM command on the Scheduler head node and return the results.
 * [AWS Systems Manager](https://aws.amazon.com/systems-manager/) provides a unified user interface so you can track and resolve operational issues across your AWS applications and resources from a central place. With Systems Manager, you can automate operational tasks for Amazon EC2 instances. The solution uses AWS Systems Manager to execute the scheduler commands on the AWS ParallelCluster head node.
 
-For detailed guidance for working with the code in this repository, see the [blog post](https://aws.amazon.com/blogs/compute/hpc-job-management-with-a-serverless-api/).
+For detailed guidance for working with the code in this repository, see the [blog post](https://aws.amazon.com/blogs/hpc/how-to-manage-hpc-jobs-using-a-serverless-api/).
 
 ## Security
 
