@@ -1,102 +1,104 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
+AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: HPC job management with a serverless API
 
 Parameters:
-  EnvironmentName:
-    Description: An environment name, the value is prepended to various resource names
-    Type: String
-    Default: HpcServerlessJobManagement
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  HeadNodeInstanceID:
+    Type: AWS::EC2::Instance::Id
+  LoadBalancerSG:
+     Type: AWS::EC2::SecurityGroup::Id
 
 Resources:
-  # This resource creates an AWS Lambda function, an AWS Identity and Access Management (IAM) execution role, and event source mappings that trigger the function
-  SlurmFunction:
-    Type: AWS::Serverless::Function
+  # Create the internal application load balancer (ALB) in the private subnets.
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
-      CodeUri: slurm_function/
-      Environment:
-        Variables:
-          BUCKET_NAME: !Ref Bucket
-      Handler: function.lambda_handler
-      Runtime: python3.7
-      Timeout: 20
-      Policies: 
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - s3:ListBucket
-                - s3:GetObject
-              Resource:
-                - Fn::Sub: arn:aws:s3:::${Bucket}
-                - Fn::Sub: arn:aws:s3:::${Bucket}/*
-            - Effect: Allow
-              Action:
-                - ssm:SendCommand
-              Resource:
-                - Fn::Sub: arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
-                - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
-            - Effect: Allow
-              Action:
-                - ssm:GetCommandInvocation
-              Resource:
-                - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:*
-      Events:
-        Slurm:
-          Type: Api
-          Properties:
-            Path: /slurm
-            Method: any
-      Tags:
-        Environment Name: !Ref EnvironmentName
-
-  # This S3 bucket is used as a repository for Slurm job scripts and as a target for SSM Run Command aws:runShellScript output files
-  Bucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties: 
-      BucketEncryption: 
-        ServerSideEncryptionConfiguration: 
-         -  ServerSideEncryptionByDefault: 
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration: 
-        BlockPublicAcls: True
-        BlockPublicPolicy: True
-        IgnorePublicAcls: True
-        RestrictPublicBuckets: True
-      Tags:
-        - Key: Environment Name
-          Value: !Ref EnvironmentName
-
-  # This IAM policy is specified as an "additional_iam_policies" parameter in the ParallelCluster config file
-  # It ensures that the cluster nodes are able to list, read, and write any location in the S3 bucket created above
-  IamPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties: 
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - s3:ListBucket
-              - s3:GetObject
-              - s3:PutObject
-            Resource:
-              - Fn::Sub: arn:aws:s3:::${Bucket}
-              - Fn::Sub: arn:aws:s3:::${Bucket}/*
+      Scheme: internal
+      SecurityGroups: 
+        - !Ref LoadBalancerSG
+      Subnets: !Ref PrivateSubnetIds
+      Type: application
+  # Create the ALB target group for ECS.
+  LoadBalancerListenerTargetGroupAPI:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      Port: 6830
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref HeadNodeInstanceID
+      VpcId: !Ref VpcId
+      Matcher:
+        HttpCode: '200,401'
+  # Create the ALB listener with the target group.
+  LoadBalancerListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref LoadBalancerListenerTargetGroupAPI
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  # Create the VPC Link configured with the private subnets.
+  VpcLink:
+      Type: 'AWS::ApiGatewayV2::VpcLink'
+      Properties:
+          Name: APIGWVpcLinkToPrivateHTTPEndpoint
+          SubnetIds: !Ref PrivateSubnetIds
+          SecurityGroupIds:
+            - !Ref LoadBalancerSG
+  # Create the API Gateway HTTP endpoint
+  APIGWHTTPEndpoint:
+      Type: 'AWS::ApiGatewayV2::Api'
+      Properties:
+          Name: hpc-serverless-job-mgmt-api
+          ProtocolType: HTTP
+  APIGWHTTPEndpointIntegration:
+      Type: 'AWS::ApiGatewayV2::Integration'
+      Properties:
+        ApiId: !Ref APIGWHTTPEndpoint
+        IntegrationType: HTTP_PROXY
+        ConnectionId: !Ref VpcLink
+        ConnectionType: VPC_LINK
+        IntegrationMethod: ANY
+        IntegrationUri: !Ref LoadBalancerListener
+        PayloadFormatVersion: '1.0'
+      DependsOn:
+      - VpcLink
+      - APIGWHTTPEndpoint
+      - LoadBalancerListener
+  # API GW route with ANY method
+  APIGWRoute:
+    Type: 'AWS::ApiGatewayV2::Route'
+    Properties:
+      ApiId: !Ref APIGWHTTPEndpoint
+      RouteKey: '$default'
+      Target: !Join 
+        - /
+        - - integrations
+          - !Ref APIGWHTTPEndpointIntegration
+    DependsOn:
+    - APIGWHTTPEndpointIntegration
+  # Set a default stage
+  APIStageDefault:
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      ApiId: !Ref APIGWHTTPEndpoint
+      StageName: $default
+      AutoDeploy: true
+    DependsOn:
+      - APIGWHTTPEndpoint
 
 Outputs:
-  ApiEndpoint:
-    Description: API endpoint URL
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/slurm"
-
-  AdditionalIamPolicies:
-    Description: IAM policy for cluster nodes
-    Value: !Ref IamPolicy
-
-  Bucket:
-    Description: S3 bucket for job scripts and SSM output
-    Value: !Ref Bucket
+  # Generated API GW endpoint URL that can be used to access the application running on a private ECS Fargate cluster.
+  APIGWEndpoint:
+    Description: API Gateway Endpoint
+    Value: !GetAtt APIGWHTTPEndpoint.ApiEndpoint

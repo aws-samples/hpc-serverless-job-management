@@ -9,13 +9,18 @@ HeadNode:
   Networking:
     SubnetId: CHANGE_ME
     ElasticIp: true
+    AdditionalSecurityGroups:
+      - CHANGE_ME
   Ssh:
     KeyName: CHANGE_ME
     AllowedIps: 10.0.0.0/16
   Iam:
-    AdditionalIamPolicies:
-      - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      - Policy: CHANGE_ME
+    S3Access:
+      - BucketName: CHANGE_ME
+        EnableWriteAccess: true
+  CustomActions:
+    OnNodeConfigured:
+      Script: CHANGE_ME
 Scheduling:
   Scheduler: slurm
   SlurmQueues:
@@ -28,6 +33,13 @@ Scheduling:
     Networking:
       SubnetIds:
       - CHANGE_ME
+    Iam:
+      S3Access:
+        - BucketName: CHANGE_ME
+          EnableWriteAccess: true
 Tags:
   - Key: Environment
     Value: HpcServerlessJobManagement
+    
+    
+    

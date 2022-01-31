@@ -3,7 +3,7 @@
 
 Description:  |
   This template deploys a VPC with a public and private subnet, a NAT Gateway is provisioned to provide
-  instances in the private subnet access to services outside of the VPC
+  instances in the private subnet access to services outside of the VPC. In additon, the template creates the required secutiry groups and bucket.
 
 Parameters:
   EnvironmentName:
@@ -21,10 +21,15 @@ Parameters:
     Type: String
     Default: 10.0.0.0/24
 
-  PrivateSubnetCIDR:
+  PrivateSubnetCIDR1:
     Description: Please enter the IP range (CIDR notation) for the private subnet
     Type: String
     Default: 10.0.1.0/24
+    
+  PrivateSubnetCIDR2:
+    Description: Please enter the IP range (CIDR notation) for the private subnet
+    Type: String
+    Default: 10.0.2.0/24
 
 Resources:
   VPC:
@@ -61,12 +66,23 @@ Resources:
         - Key: Name
           Value: !Sub ${EnvironmentName} Public Subnet
 
-  PrivateSubnet:
+  PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs  '' ]
-      CidrBlock: !Ref PrivateSubnetCIDR
+      CidrBlock: !Ref PrivateSubnetCIDR1
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Private Subnet
+          
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PrivateSubnetCIDR2
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
@@ -121,17 +137,92 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway
 
-  PrivateSubnetRouteTableAssociation:
+  PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PrivateRouteTable
-      SubnetId: !Ref PrivateSubnet
+      SubnetId: !Ref PrivateSubnet1
+      
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet2
+
+  APISG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for the API
+      VpcId:
+        !Ref VPC
+        
+  APISGingress:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: APISG
+    Properties:
+      GroupId:
+        Ref: APISG
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      SourceSecurityGroupId:
+        Ref: APISG
+     
+  # This Security Group is specified as an "AdditionalSecurityGroups" parameter in the ParallelCluster config file.   
+  HeadNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Additional Security group for the HeadNode. Required to communicate with the Slurm API
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6830
+          ToPort: 6830
+          SourceSecurityGroupName: !Ref APISG
+      VpcId:
+        !Ref VPC
+        
+  # This S3 bucket is used as a repository for Slurm job scripts and ParallelCluster post install script.
+  Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties: 
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+         -  ServerSideEncryptionByDefault: 
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration: 
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+        
 
 Outputs:    
   HeadNodeSubnetId:
     Description: A reference to the public subnet ID
     Value: !Ref PublicSubnet
 
-  ComputeResourcesSubnetId:
+  ComputeResourcesSubnetId1:
     Description: A reference to the private subnet ID
-    Value: !Ref PrivateSubnet
+    Value: !Ref PrivateSubnet1
+    
+  ComputeResourcesSubnetId2:
+    Description: A reference to the private subnet ID
+    Value: !Ref PrivateSubnet2
+    
+  APISecurityGroup:
+    Description: A reference to the API Security Group
+    Value: !Ref APISG
+    
+  HeadNodeSecurityGroup:
+    Description: A reference to the HeadNode Additional Security Group
+    Value: !Ref HeadNodeSG
+
+  VPCID:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+    
+  Bucket:
+    Description: S3 bucket for job scripts and post install script
+    Value: !Ref Bucket
