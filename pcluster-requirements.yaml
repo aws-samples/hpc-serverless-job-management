@@ -177,7 +177,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 6830
           ToPort: 6830
-          SourceSecurityGroupName: !Ref APISG
+          SourceSecurityGroupId: !Ref APISG
       VpcId:
         !Ref VPC
         
