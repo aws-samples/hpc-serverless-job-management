@@ -10,7 +10,7 @@ ConditionPathExists=/opt/slurm/etc/slurm.conf
 Type=simple
 EnvironmentFile=-/etc/sysconfig/slurmrestd
 Environment="SLURM_JWT=daemon"
-ExecStart=/opt/slurm/sbin/slurmrestd -f /opt/slurm/etc/slurm.conf -a rest_auth/jwt -s openapi/v0.0.37 0.0.0.0:6830
+ExecStart=/opt/slurm/sbin/slurmrestd -f /opt/slurm/etc/slurm.conf -a rest_auth/jwt 0.0.0.0:6830
 ExecReload=/bin/kill -HUP $MAINPID
 User=munge
 Group=munge
