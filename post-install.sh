@@ -26,5 +26,5 @@ systemctl enable slurmrestd
 dd if=/dev/random of=/var/spool/slurm.state/jwt_hs256.key bs=32 count=1
 chown slurm:slurm /var/spool/slurm.state/jwt_hs256.key
 chmod 0600 /var/spool/slurm.state/jwt_hs256.key
-systemctl start slurmctld
+systemctl restart slurmctld
 systemctl start slurmrestd
