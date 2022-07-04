@@ -16,7 +16,7 @@ HeadNode:
     AllowedIps: 10.0.0.0/16
   Iam:
     AdditionalIamPolicies: 
-     - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 
+      - Policy: arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 
     S3Access:
       - BucketName: CHANGE_ME
         EnableWriteAccess: true
